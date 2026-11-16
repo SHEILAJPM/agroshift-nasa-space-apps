@@ -1,0 +1,147 @@
+# Umbrales de AgroShift. Todos se pueden ajustar sin tocar código.
+# "supuesto" = valor elegido por el equipo (no viene de una norma); se documenta en la entrega.
+
+# Días que se promedian para el "estado actual" (terminan en el último día con datos de NASA POWER,
+# que va ~3 días detrás de hoy).
+ventana_dias: 30            # supuesto (el pedido permite 15 a 30; 30 días suaviza la lluvia diaria)
+
+lluvia:
+  # |anomalía %| = |actual - normal| / normal * 100
+  medio: 20                 # supuesto
+  alto: 40                  # supuesto
+  # En la estación seca la normal es casi 0 mm/día y cualquier llovizna da +300 %.
+  # Si la lluvia actual Y la normal están por debajo de este valor, no hay señal: nivel bajo.
+  minimo_significativo_mm_dia: 1.0   # supuesto
+
+humedad_suelo:
+  # Solo cuenta el déficit (bajo lo normal = riesgo de sequía). El exceso de agua lo mide "lluvia".
+  medio: 20                 # supuesto
+  alto: 40                  # supuesto
+
+calor:
+  # Diferencia en °C del promedio de T2M_MAX frente a T2M_MAX_AVG (climatología 2001-2025)
+  medio: 1.5                # supuesto
+  alto: 3.0                 # supuesto
+
+el_nino:
+  # Anomalía de la temperatura del mar en Niño 1+2 (0°-10° S, 90°-80° O), en °C.
+  # Referencia: el ENFEN (Perú) usa en Niño 1+2 el ICEN: débil 0.4-1.0, moderado 1.0-1.7,
+  # fuerte 1.7-3.0. Los cortes de abajo son una simplificación del equipo.
+  medio: 0.5                # supuesto (cercano al umbral "débil" del ENFEN)
+  alto: 1.5                 # supuesto (cercano al umbral "fuerte" del ENFEN)
+
+# ---------- Fase 2: riesgo de la campaña (clima histórico de cada mes vs. lo que tolera el cultivo) ----------
+campana:
+  temperatura:
+    # Grados que la máxima diaria media del mes supera temp_max del cultivo (o la mínima queda bajo temp_min)
+    medio: 0.0              # supuesto: cualquier salida del rango ya es riesgo medio
+    alto: 3.0               # supuesto
+  # Agua que necesita el cultivo por mes según su categoría "agua" del catálogo (mm/mes).
+  # Orden de magnitud de la FAO (arroz ~1 000-1 500 mm por campaña). Supuesto del equipo.
+  necesidad_agua_mm_mes:
+    bajo: 60
+    medio: 110
+    alto: 200
+  # Lluvia del mes / necesidad. Por debajo: el cultivo depende del riego (la costa de Piura es casi toda
+  # agricultura bajo riego, por eso el déficit de lluvia solo llega a "medio"). Supuesto.
+  deficit_ratio_medio: 0.25
+  # Exceso: lluvia del mes > N veces la necesidad Y > X mm (inundación, enfermedades). Supuesto.
+  exceso_medio: {ratio: 1.5, mm: 100}
+  exceso_alto: {ratio: 2.0, mm: 200}
+  # Meses en que El Niño costero sube un nivel el riesgo de lluvia (costa norte de Perú y sur de Ecuador)
+  meses_nino: [1, 2, 3, 4]
+  # Helada: mínima normal del mes en o bajo este valor (°C) → riesgo alto (sierra: Huancabamba, Ayabaca). Supuesto.
+  helada_tmin_c: 2.0
+
+# ---------- Fase 2: puntaje de rotaciones (100 puntos menos descuentos) ----------
+rotaciones:
+  agua_alto_deficit_alto: -40
+  agua_alto_deficit_medio: -20
+  temperatura_por_mes: -10
+  temperatura_maximo: -30
+  mes_riesgo_alto: -10
+  # Cada mes en riesgo MEDIO también resta (poco): así cada cambio de color de la barra de meses se nota en el puntaje.
+  mes_riesgo_medio: -3          # supuesto del equipo
+  siembra_fuera_de_meses: -15   # por cada cultivo de la rotación sembrado fuera de sus meses
+  riesgo_bajo_desde: 70         # puntaje >= 70 → bajo
+  riesgo_medio_desde: 45        # 45-69 → medio; < 45 → alto
+  # El Niño EXTRAORDINARIO (anomalía del mar en Niño 1+2 por encima del "fuerte" del ENFEN, ~3 °C): con lluvias e inundaciones fuera de lo
+  # normal ninguna siembra es segura, así que se resta a TODAS las rotaciones (solo en la costa norte y con dato real de MUR SST).
+  # Mismos valores que usa climate-service (EL_NINO_EXTREMO_C / EL_NINO_EXTREMO_PTS). Supuesto del equipo.
+  el_nino_extremo_c: 3.0
+  el_nino_extremo_puntos: -35
+
+# ---------- Salud del suelo de cada rotación (0-100; base + reglas) ----------
+# Supuestos del equipo, explicables y ajustables. Una rotación de dos cultivos distintos, de familias distintas y sin
+# más datos queda en la base. Con leguminosa + raíces alternas + cobertura llega a 100. Arroz - Arroz queda en 40.
+salud_suelo:
+  base: 70
+  monocultivo: -30          # el mismo cultivo dos veces seguidas: agota los mismos nutrientes y mantiene sus plagas
+  misma_familia: -15        # cultivos distintos de la misma familia botánica (p. ej. arroz y maíz, Poaceae)
+  leguminosa: 15            # alguna leguminosa (Fabaceae): fija nitrógeno del aire
+  raices_alternas: 10       # raíces de distinta profundidad: exploran capas distintas del suelo
+  cobertura: 5              # cultivo que cubre el suelo (protege de erosión y sol)
+  agua_alta_seguidos: -10   # dos cultivos de uso de agua ALTO seguidos: tanto riego cansa el suelo y lo puede salinizar
+  agua_alta_suelo_salino:   # cultivo de uso de agua ALTO según la salinidad que declara el agricultor
+    no: 0
+    leve: -10
+    alta: -20
+  riesgo_bajo_desde: 70     # mismos cortes que el puntaje climático: >= 70 bueno, 45-69 regular, < 45 malo
+  riesgo_medio_desde: 45
+  # Información local del suelo (Punto 2). Solo si la parcela trae el dato.
+  salinidad_tolerancia:     # cultivo poco tolerante a la sal en suelo salino (una vez por rotación, el peor caso)
+    leve: {baja: -10, media: 0, alta: 0}
+    alta: {baja: -20, media: -10, alta: 0}
+  arenoso_agua_alta: -10    # suelo arenoso retiene poca agua: castiga cultivos de uso de agua ALTO
+  # Suelo desnudo: meses del año sin cultivo en la rotación (12 - duración de los dos cultivos)
+  suelo_desnudo_desde_meses: 3
+  suelo_desnudo: -10        # suelo pelado: erosión por viento y lluvia, pierde materia orgánica
+
+# ---------- Prioridad del agricultor: puntaje final = clima·w + suelo·w + agua·w ----------
+# Supuestos del equipo. Sin prioridad elegida se usa "por_defecto".
+prioridades:
+  por_defecto: arriesgar_menos
+  pesos:
+    arriesgar_menos: {clima: 0.60, suelo: 0.25, agua: 0.15}
+    cuidar_suelo:    {clima: 0.35, suelo: 0.50, agua: 0.15}
+    ahorrar_agua:    {clima: 0.35, suelo: 0.15, agua: 0.50}
+  puntaje_agua: {bajo: 100, medio: 60, alto: 20}   # uso de agua de la rotación (el cultivo que más usa)
+  # Restricción del agricultor: cuánta agua de riego tiene. Cambia el puntaje de agua (supuesto del equipo).
+  puntaje_agua_disponible:
+    poca:       {bajo: 100, medio: 40, alto: 0}
+    normal:     {bajo: 100, medio: 60, alto: 20}
+    suficiente: {bajo: 100, medio: 80, alto: 60}
+
+# ---------- Textura del suelo (SoilGrids, ISRIC; 0-30 cm) → tipo de suelo de la app ----------
+suelo_textura:
+  arenoso_arena_desde: 70   # % de arena >= 70 → arenoso
+  arcilloso_arcilla_desde: 35  # % de arcilla >= 35 → arcilloso; si no, franco
+
+# ---------- Escenarios hipotéticos ("¿y si el año viene…?") ----------
+# Multiplica la lluvia NORMAL de cada mes (climatología NASA POWER) para las rotaciones. No es un pronóstico. Supuesto del equipo.
+escenarios:
+  seco: 0.6
+  normal: 1.0
+  lluvioso: 1.6
+
+# En la costa de Piura casi no llueve: lo que un año seco o lluvioso cambia es el agua de RIEGO (reservorios
+# Poechos y San Lorenzo). El escenario mueve el agua disponible del agricultor estos niveles (poca < normal < suficiente).
+# Sin dato del agricultor se parte de "normal". Supuesto del equipo.
+escenarios_agua:
+  seco: -1
+  normal: 0
+  lluvioso: 1
+
+# Contraste del dato de MUR SST con el índice semanal Niño 1+2 de NOAA (OISST v2.1, base 1991-2020; NO es NASA).
+# Las bases climatológicas difieren (MUR: 2003-2014), así que unas décimas de diferencia son normales.
+contraste_nino:
+  max_diferencia_c: 1.0     # más que esto → "no concuerda" y se avisa (supuesto)
+  max_dias_entre_semanas: 10
+
+# Simulador "¿y si el mar sube?": rango permitido de la anomalía hipotética (°C)
+nino_hipotetico: {min: -2.0, max: 5.0}
+
+# ---------- Validación de todos los años ("¿Funciona?") ----------
+validacion:
+  # "Evento" = lluvia de febrero a abril >= N veces la normal (mismo dato satelital). Supuesto del equipo.
+  evento_ratio: 2.0
